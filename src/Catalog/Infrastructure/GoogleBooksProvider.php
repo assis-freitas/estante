@@ -5,6 +5,7 @@ namespace Estante\Catalog\Infrastructure;
 use Estante\Catalog\Domain\BookMetadata;
 use Estante\Catalog\Domain\BookMetadataProvider;
 use Estante\Catalog\Domain\Isbn;
+use Estante\Catalog\Domain\MatchKey;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as Http;
 
@@ -39,6 +40,46 @@ final readonly class GoogleBooksProvider implements BookMetadataProvider
             return null;
         }
 
+        return self::toMetadata($isbn, $info);
+    }
+
+    public function findByTitle(string $title, string $author): ?BookMetadata
+    {
+        $wanted = MatchKey::of($title, [$author]);
+        if ($wanted === null) {
+            return null;
+        }
+
+        $quote = fn (string $text) => '"'.str_replace('"', '', $text).'"';
+
+        try {
+            $response = $this->http
+                ->timeout(5)
+                ->acceptJson()
+                ->get('https://www.googleapis.com/books/v1/volumes', array_filter([
+                    'q' => 'intitle:'.$quote($title).' inauthor:'.$quote($author),
+                    'maxResults' => 5,
+                    'key' => $this->apiKey,
+                ]));
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        foreach ($response->successful() ? (array) $response->json('items') : [] as $item) {
+            $info = $item['volumeInfo'] ?? [];
+            $isbn = self::isbnOf($info['industryIdentifiers'] ?? []);
+
+            if ($isbn !== null && $wanted->equals(MatchKey::of($info['title'] ?? '', array_values($info['authors'] ?? [])))) {
+                return self::toMetadata($isbn, $info);
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<string, mixed>  $info */
+    private static function toMetadata(Isbn $isbn, array $info): BookMetadata
+    {
         return new BookMetadata(
             isbn: $isbn,
             title: $info['title'],
@@ -51,6 +92,20 @@ final readonly class GoogleBooksProvider implements BookMetadataProvider
             coverUrl: self::cover($info['imageLinks'] ?? []),
             description: isset($info['description']) ? strip_tags($info['description']) : null,
         );
+    }
+
+    /** @param  list<array{type?: string, identifier?: string}>  $identifiers */
+    private static function isbnOf(array $identifiers): ?Isbn
+    {
+        foreach (['ISBN_13', 'ISBN_10'] as $type) {
+            foreach ($identifiers as $id) {
+                if (($id['type'] ?? null) === $type && Isbn::isValid($id['identifier'] ?? '')) {
+                    return Isbn::fromString($id['identifier']);
+                }
+            }
+        }
+
+        return null;
     }
 
     /** @param  array<string, string>  $links */

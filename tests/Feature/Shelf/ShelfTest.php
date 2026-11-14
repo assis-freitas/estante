@@ -27,6 +27,11 @@ function fakeCatalog(array $known = []): void
 
             return $title === null ? null : new BookMetadata($isbn, $title, ['Some Author'], 'fake', pageCount: 200);
         }
+
+        public function findByTitle(string $title, string $author): ?BookMetadata
+        {
+            return null;
+        }
     });
 }
 

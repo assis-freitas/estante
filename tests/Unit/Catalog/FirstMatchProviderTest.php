@@ -17,6 +17,13 @@ function fixedProvider(?BookMetadata $answer, int &$calls = 0): BookMetadataProv
 
             return $this->answer;
         }
+
+        public function findByTitle(string $title, string $author): ?BookMetadata
+        {
+            $this->calls++;
+
+            return $this->answer;
+        }
     };
 }
 
@@ -45,4 +52,14 @@ it('fills missing cover and page count from later sources, keeping the first tit
         ->and($found->source)->toBe('a')
         ->and($found->pageCount)->toBe(431)
         ->and($found->coverUrl)->toBe('https://img/b.jpg');
+});
+
+it('returns the first source that finds the work by title, without asking the others', function () {
+    $found = new BookMetadata($this->isbn, 'Clean Code', ['Robert C. Martin'], 'b');
+    $thirdCalls = 0;
+
+    $result = (new FirstMatchProvider(fixedProvider(null), fixedProvider($found), fixedProvider(null, $thirdCalls)))
+        ->findByTitle('Clean Code', 'Robert C. Martin');
+
+    expect($result)->toBe($found)->and($thirdCalls)->toBe(0);
 });
