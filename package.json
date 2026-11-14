@@ -1,4 +1,5 @@
 {
+    "name": "estante",
     "private": true,
     "type": "module",
     "scripts": {
