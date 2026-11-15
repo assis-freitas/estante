@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property ?string $cover_url
  * @property ?string $description
  * @property string $source
+ * @property ?string $match_key
  */
 class Book extends Model
 {
@@ -46,6 +47,7 @@ class Book extends Model
 
     /**
      * For editions no source knows about (old, self-published, rare...).
+     * $source says who described it: 'manual' for a reader, or an importer.
      *
      * @param  list<string>  $authors
      */
@@ -55,6 +57,8 @@ class Book extends Model
         ?Isbn $isbn = null,
         ?int $pageCount = null,
         ?int $publishedYear = null,
+        ?string $publisher = null,
+        string $source = 'manual',
     ): self {
         $title = trim($title);
         if ($title === '') {
@@ -70,14 +74,26 @@ class Book extends Model
         $book->authors = array_values(array_filter(array_map('trim', $authors)));
         $book->page_count = $pageCount;
         $book->published_year = $publishedYear;
-        $book->source = 'manual';
+        $book->publisher = filled($publisher) ? trim($publisher) : null;
+        $book->source = $source;
 
         return $book;
+    }
+
+    public function matchKey(): ?MatchKey
+    {
+        return MatchKey::of($this->title, $this->authors ?? []);
     }
 
     public function authorsLine(): string
     {
         return implode(', ', $this->authors) ?: 'Unknown author';
+    }
+
+    protected static function booted(): void
+    {
+        // Kept in a column so editions without an ISBN can be found again.
+        static::saving(fn (self $book) => $book->match_key = $book->matchKey()?->value);
     }
 
     protected function isbn(): Attribute

@@ -7,8 +7,8 @@ use Estante\Catalog\Domain\BookMetadataProvider;
 use Estante\Catalog\Domain\Isbn;
 
 /**
- * Asks each source in order and returns the first answer. When the winner has
- * no cover or page count, later sources may fill those gaps.
+ * Asks each source in order and returns the first answer. For an ISBN, when
+ * the winner has no cover or page count, later sources may fill those gaps.
  */
 final readonly class FirstMatchProvider implements BookMetadataProvider
 {
@@ -38,6 +38,19 @@ final readonly class FirstMatchProvider implements BookMetadataProvider
         }
 
         return $found;
+    }
+
+    /** Title searches are fuzzy and costly: the first exact match wins. */
+    public function findByTitle(string $title, string $author): ?BookMetadata
+    {
+        foreach ($this->providers as $provider) {
+            $found = $provider->findByTitle($title, $author);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     private static function fillGaps(BookMetadata $base, BookMetadata $extra): BookMetadata

@@ -5,13 +5,15 @@ namespace Estante\Catalog\Infrastructure;
 use Estante\Catalog\Domain\BookMetadata;
 use Estante\Catalog\Domain\BookMetadataProvider;
 use Estante\Catalog\Domain\Isbn;
+use Estante\Catalog\Domain\MatchKey;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as Http;
 
 /**
- * Adapter for the Open Library Books API.
+ * Adapter for the Open Library Books and Search APIs.
  *
  * @see https://openlibrary.org/dev/docs/api/books
+ * @see https://openlibrary.org/dev/docs/api/search
  */
 final readonly class OpenLibraryProvider implements BookMetadataProvider
 {
@@ -52,6 +54,69 @@ final readonly class OpenLibraryProvider implements BookMetadataProvider
             pageCount: isset($data['number_of_pages']) ? (int) $data['number_of_pages'] : null,
             coverUrl: $data['cover']['large'] ?? $data['cover']['medium'] ?? null,
         );
+    }
+
+    public function findByTitle(string $title, string $author): ?BookMetadata
+    {
+        $wanted = MatchKey::of($title, [$author]);
+        if ($wanted === null) {
+            return null;
+        }
+
+        try {
+            $response = $this->http
+                ->timeout(5)
+                ->acceptJson()
+                ->get('https://openlibrary.org/search.json', [
+                    'title' => $title,
+                    'author' => $author,
+                    'fields' => 'title,subtitle,author_name,isbn,publisher,first_publish_year,number_of_pages_median,cover_i',
+                    'limit' => 5,
+                ]);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        foreach ($response->successful() ? (array) $response->json('docs') : [] as $doc) {
+            $authors = array_values($doc['author_name'] ?? []);
+            $isbn = self::firstValidIsbn($doc['isbn'] ?? []);
+
+            if ($isbn === null || ! $wanted->equals(MatchKey::of($doc['title'] ?? '', $authors))) {
+                continue;
+            }
+
+            return new BookMetadata(
+                isbn: $isbn,
+                title: $doc['title'],
+                authors: $authors,
+                source: self::SOURCE,
+                subtitle: $doc['subtitle'] ?? null,
+                publisher: $doc['publisher'][0] ?? null,
+                publishedYear: isset($doc['first_publish_year']) ? (int) $doc['first_publish_year'] : null,
+                pageCount: isset($doc['number_of_pages_median']) ? (int) $doc['number_of_pages_median'] : null,
+                coverUrl: isset($doc['cover_i']) ? "https://covers.openlibrary.org/b/id/{$doc['cover_i']}-L.jpg" : null,
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * A search hit lists the ISBNs of every edition of the work; prefer an ISBN-13.
+     *
+     * @param  list<string>  $candidates
+     */
+    private static function firstValidIsbn(array $candidates): ?Isbn
+    {
+        usort($candidates, fn (string $a, string $b) => strlen($b) <=> strlen($a));
+
+        foreach ($candidates as $candidate) {
+            if (Isbn::isValid($candidate)) {
+                return Isbn::fromString($candidate);
+            }
+        }
+
+        return null;
     }
 
     private static function year(?string $date): ?int

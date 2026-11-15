@@ -33,8 +33,8 @@ Domain-Driven Design, the pragmatic way: see [ADR 0001](docs/adr/0001-pragmatic-
 src/
   Shared/Domain/          DomainRuleViolation, RecordsEvents
   Catalog/                editions, shared by every reader (upstream)
-    Domain/               Book, Isbn, BookMetadata, BookMetadataProvider (port)
-    Application/          FindOrImportBook, RegisterBook
+    Domain/               Book, Isbn, MatchKey, BookMetadata, BookMetadataProvider (port)
+    Application/          FindOrImportBook, RegisterBook, ResolveBook
     Infrastructure/       OpenLibraryProvider, GoogleBooksProvider, FirstMatchProvider
   Shelf/                  one reader's copies (downstream of Catalog)
     Domain/               Copy (aggregate), ReadingStatus, events
@@ -47,6 +47,9 @@ app/Http/                 controllers, resources, policies: the delivery layer
 - **Aggregates guard their rules.** `Copy` only changes through methods like `startReading()` or
   `finishReading()`, which refuse impossible moves (finishing before starting, rating an unread book,
   future dates) and record domain events.
+- **No duplicates in a shared catalog.** `ResolveBook` turns any description (ISBN or not) into an
+  edition without asking anyone: ISBN first, then the same work by title and author (`MatchKey`),
+  locally and in the sources, and only then a new edition. See [ADR 0002](docs/adr/0002-resolving-books-without-an-isbn.md).
 - **Ports where there is an outside world.** Catalog lookups go through the `BookMetadataProvider`
   port. Tests use an in-memory catalog and never touch the network.
 - **Rules enforced by tests.** [`tests/Arch`](tests/Arch/ArchitectureTest.php) fails the build if the
