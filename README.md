@@ -22,11 +22,8 @@ authors and cover. Then track what you want to read, are reading and have read, 
 ### Roadmap
 
 - [ ] Scan the barcode with the phone camera
-- [ ] Loans: who has my book, and since when
 - [ ] Year in books (stats from the `BookFinished` events)
-- [ ] Import from Goodreads / Skoob CSV
 - [ ] PWA
-- [ ] Ask your shelf (semantic search over notes, pgvector)
 
 ## Architecture
 
